@@ -165,6 +165,10 @@ footer p{margin:0;max-width:80ch}
     <div class="connect">
       <button id="start" class="primary">Start sound and MIDI</button>
       <select id="input" aria-label="MIDI input" disabled><option>No MIDI yet</option></select>
+      <select id="vowel" aria-label="What the singers sing">
+        <option value="a">Sing “ah”</option><option value="e">Sing “eh”</option><option value="i">Sing “ee”</option>
+        <option value="o">Sing “oh”</option><option value="u">Sing “oo”</option><option value="kyrie">Sing “Kyrie eleison”</option>
+      </select>
       <label>Reverb <input type="range" id="nave" min="0" max="1" step="0.01"></label>
       <select id="look" aria-label="Page look"><option value="scriptorium">Scriptorium look</option><option value="plain">Workbench look</option></select>
       <select id="perf" aria-label="Performance mode"><option value="standard">Standard</option><option value="light">Light, for older computers</option></select>
@@ -237,20 +241,78 @@ footer p{margin:0;max-width:80ch}
 
 <script>
 "use strict";
+// ---------- singing voices ----------
+// Five formants per vowel per voice type: [frequencies], [levels in dB], [bandwidths]
+const FORMANTS = {
+  bass:{a:[[600,1040,2250,2450,2750],[0,-7,-9,-9,-20],[60,70,110,120,130]],
+        e:[[400,1620,2400,2800,3100],[0,-12,-9,-12,-18],[40,80,100,120,120]],
+        i:[[250,1750,2600,3050,3340],[0,-30,-16,-22,-28],[60,90,100,120,120]],
+        o:[[400,750,2400,2600,2900],[0,-11,-21,-20,-40],[40,80,100,120,120]],
+        u:[[350,600,2400,2675,2950],[0,-20,-32,-28,-36],[40,80,100,120,120]]},
+  tenor:{a:[[650,1080,2650,2900,3250],[0,-6,-7,-8,-22],[80,90,120,130,140]],
+        e:[[400,1700,2600,3200,3580],[0,-14,-12,-14,-20],[70,80,100,120,120]],
+        i:[[290,1870,2800,3250,3540],[0,-15,-18,-20,-30],[40,90,100,120,120]],
+        o:[[400,800,2600,2800,3000],[0,-10,-12,-12,-26],[40,80,100,120,120]],
+        u:[[350,600,2700,2900,3300],[0,-20,-17,-14,-26],[40,60,100,120,120]]},
+  alto:{a:[[800,1150,2800,3500,4950],[0,-4,-20,-36,-60],[80,90,120,130,140]],
+        e:[[400,1600,2700,3300,4950],[0,-24,-30,-35,-60],[60,80,120,150,200]],
+        i:[[350,1700,2700,3700,4950],[0,-20,-30,-36,-60],[50,100,120,150,200]],
+        o:[[450,800,2830,3500,4950],[0,-9,-16,-28,-55],[70,80,100,130,135]],
+        u:[[325,700,2530,3500,4950],[0,-12,-30,-40,-64],[50,60,170,180,200]]},
+  soprano:{a:[[800,1150,2900,3900,4950],[0,-6,-32,-20,-50],[80,90,120,130,140]],
+        e:[[350,2000,2800,3600,4950],[0,-20,-15,-40,-56],[60,100,120,150,200]],
+        i:[[270,2140,2950,3900,4950],[0,-12,-26,-26,-44],[60,90,100,120,120]],
+        o:[[450,800,2830,3800,4950],[0,-11,-22,-22,-50],[70,80,100,130,135]],
+        u:[[325,700,2700,3800,4950],[0,-16,-35,-40,-60],[50,60,170,180,200]]},
+};
+const VOICE_LEVEL = 0.3;
+const partFor = p => p<50 ? "bass" : p<57 ? "tenor" : p<67 ? "alto" : "soprano";
+function formantSet(part, vowel, f0){
+  const [F,dB,BW]=FORMANTS[part][vowel];
+  return F.map((fr,k)=>{
+    // high voices tune the first formant up to the sung pitch, as sopranos do
+    if(k===0 && (part==="alto"||part==="soprano")) fr=Math.max(fr, f0*1.08);
+    return [fr, fr/BW[k], Math.pow(10,dB[k]/20)];
+  });
+}
+// estimated loudness of a glottal source at f0 through a formant set, to hold level across vowels
+function formantLoudness(set, f0){
+  let e=0;
+  for(let h=1; h*f0<5500; h++){
+    const fh=h*f0; let H=0;
+    for(const [fc,q,g] of set){ const r=fh/fc-fc/fh; H+=g/Math.sqrt(1+q*q*r*r); }
+    const a=Math.pow(h,-1.9)*H; e+=a*a;
+  }
+  return Math.sqrt(e);
+}
+// the words: vowels only, one syllable per chord in Kyrie mode
+const KYRIE=[["Ky-","i"],["ri-","i"],["e","e"],["e-","e"],["le-","e"],["i-","i"],["son","o"]];
+let vowelMode="a", kyrieIdx=-1, lastSyllableT=0;
+const underlay=[];
+const currentVowel = () => vowelMode==="kyrie" ? KYRIE[Math.max(0,kyrieIdx)][1] : vowelMode;
+function advanceSyllable(){
+  if(vowelMode!=="kyrie") return;
+  const now=performance.now();
+  if(now-lastSyllableT>150){
+    kyrieIdx=(kyrieIdx+1)%KYRIE.length;
+    underlay.push([now, KYRIE[kyrieIdx][0]]);
+    slots.forEach(s=>s.voice?.setVowel?.(currentVowel()));
+  }
+  lastSyllableT=now;
+}
+
 // ---------- timbres ----------
 const TIMBRES = {
   "Bowed string": {oscs:[{type:"sawtooth",detune:-6,gain:.35},{type:"sawtooth",detune:6,gain:.35}],
     filter:{freq:500,track:2.2,q:.9}, attack:.16, release:.35, vib:{rate:5.4,cents:14,delay:.35}, level:.55},
   "Clarinet": {oscs:[{type:"square",gain:.33},{type:"sine",gain:.3}],
     filter:{freq:400,track:2.5,q:1.4}, attack:.035, release:.1, level:.5},
-  "Choir aah": {oscs:[{type:"sawtooth",detune:-9,gain:.3},{type:"sawtooth",detune:8,gain:.3}],
-    formants:[[800,7,1],[1150,8,.55],[2900,10,.3]], noise:{freq:3200,q:.8,gain:.015},
-    attack:.22, release:.55, vib:{rate:5,cents:16,delay:.25}, level:1.8},
-  "Choir ooh": {oscs:[{type:"triangle",detune:-7,gain:.45},{type:"sawtooth",detune:7,gain:.25}],
-    formants:[[330,5,1],[720,7,.35],[2400,10,.08]], attack:.28, release:.6, vib:{rate:4.8,cents:14,delay:.3}, level:2.2},
-  "Monk": {oscs:[{type:"sawtooth",detune:-5,gain:.3},{type:"sawtooth",detune:5,gain:.3},{type:"triangle",gain:.2}],
-    formants:[[450,6,1],[800,7,.45],[2830,12,.08]], noise:{freq:2500,q:.8,gain:.008},
-    attack:.3, release:.7, vib:{rate:4.5,cents:8,delay:.5}, level:2.0},
+  "Choir section": {singer:true, n:3, spread:9, scoop:35, jitter:5, vib:{rate:5.3,cents:22,delay:.35},
+    breath:.02, attack:.18, release:.5, level:1},
+  "Solo singer": {singer:true, n:1, spread:0, scoop:45, jitter:7, vib:{rate:5.6,cents:38,delay:.28},
+    breath:.025, attack:.12, release:.35, level:1},
+  "Monk": {singer:true, n:3, part:"bass", spread:7, scoop:25, jitter:4, vib:{rate:4.6,cents:8,delay:.6},
+    breath:.015, attack:.25, release:.6, level:1},
   "Flute": {oscs:[{type:"sine",gain:.6},{type:"sine",ratio:2,gain:.08},{type:"triangle",detune:4,gain:.12}],
     noise:{freq:2600,q:1.2,gain:.03}, attack:.06, release:.14, vib:{rate:5.2,cents:10,delay:.22}, level:.5},
   "Brass": {oscs:[{type:"sawtooth",detune:-4,gain:.35},{type:"sawtooth",detune:4,gain:.35}],
@@ -258,9 +320,9 @@ const TIMBRES = {
   "Organ": {oscs:[{type:"organ",gain:.5}], attack:.008, release:.05, level:.45},
 };
 const DEFAULTS = [
-  {timbre:"Monk",         vol:.85, pan:-.45},
-  {timbre:"Bowed string", vol:.75, pan:-.15},
-  {timbre:"Choir aah",    vol:.8, pan:.15},
+  {timbre:"Monk",          vol:.85, pan:-.45},
+  {timbre:"Choir section", vol:.8,  pan:-.15},
+  {timbre:"Choir section", vol:.8,  pan:.15},
   {timbre:"Flute",        vol:.75, pan:.45},
 ];
 const PARTS = ["Bassus","Tenor","Altus","Cantus"];
@@ -269,6 +331,7 @@ const NAMES = ["C","C♯","D","E♭","E","F","F♯","G","A♭","A","B♭","B"];
 
 // ---------- state ----------
 let reverb=null, wet=null, reverbOn=false;
+let glottalWave=null;
 let ctx=null, master=null, noiseBuf=null, organWave=null, midi=null;
 const TEMPERAMENTS=["Equal","Meantone","Just","Pythagorean","Werckmeister III","Kirnberger III","Vallotti","Young","Kellner","1/6 Meantone","19-EDO","31-EDO"];
 const dev={110:null,111:null,112:null,199:null,237:null};
@@ -291,9 +354,10 @@ try{
     if(saved.mode==="pitch"||saved.mode==="channel") mode=saved.mode;
     if(saved.perf==="light"||saved.perf==="standard") perf=saved.perf;
     if(saved.look==="plain"||saved.look==="scriptorium") look=saved.look;
+    if(["a","e","i","o","u","kyrie"].includes(saved.vowelMode)) vowelMode=saved.vowelMode;
     if(typeof saved.nave==="number") nave=Math.max(0,Math.min(1,saved.nave)); }
 }catch(e){}
-function save(){ try{ localStorage.setItem("mc-choir", JSON.stringify({mode, perf, look, nave, slots:slots.map(s=>({timbre:s.timbre,vol:s.vol,pan:s.pan,chan:s.chan}))})); }catch(e){} }
+function save(){ try{ localStorage.setItem("mc-choir", JSON.stringify({mode, perf, look, nave, vowelMode, slots:slots.map(s=>({timbre:s.timbre,vol:s.vol,pan:s.pan,chan:s.chan}))})); }catch(e){} }
 
 if(look==="plain") document.documentElement.dataset.look="plain";
 const masterIdx = () => zone.type==="lower" ? 0 : 15;
@@ -327,6 +391,10 @@ function initAudio(){
   const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
   const h=[0,1,.7,.35,.25,0,0,0,.2];
   organWave = ctx.createPeriodicWave(new Float32Array(h.length), new Float32Array(h));
+  // a glottal pulse rolls off near 12 dB per octave, twice as steep as a sawtooth
+  const N=80, gr=new Float32Array(N), gi=new Float32Array(N);
+  for(let k=1;k<N;k++) gi[k]=Math.pow(k,-1.9);
+  glottalWave = ctx.createPeriodicWave(gr, gi);
   slots.forEach(s=>{ s.gain=ctx.createGain(); s.panner=ctx.createStereoPanner();
     s.gain.connect(s.panner).connect(master); });
   applyMix();
@@ -353,7 +421,82 @@ function glideTo(param, v, tt, tc){
 }
 const cutoff = (t,f) => Math.min(16000, t.filter.freq + (t.filter.track||0)*f);
 
+function makeSinger(t, dest, pitch, vel){
+  const now=ctx.currentTime; let f=mtof(pitch);
+  const part=t.part||partFor(pitch);
+  let vowel=currentVowel();
+  const env=ctx.createGain(); env.gain.value=0; env.connect(dest);
+  const peak=t.level*(.55+.45*vel/127);
+  env.gain.setValueAtTime(0,now);
+  env.gain.linearRampToValueAtTime(peak*.8, now+t.attack*.6);
+  env.gain.linearRampToValueAtTime(peak, now+t.attack);
+  // five formant resonators in parallel
+  const src=ctx.createGain(), sum=ctx.createGain(), bank=[];
+  for(let k=0;k<5;k++){
+    const bp=ctx.createBiquadFilter(); bp.type="bandpass"; const g=ctx.createGain();
+    src.connect(bp).connect(g).connect(sum); bank.push({bp,g});
+  }
+  sum.connect(env);
+  const shape=(tc)=>{
+    const set=formantSet(part, vowel, f);
+    const mk=Math.min(40, VOICE_LEVEL/Math.max(1e-4, formantLoudness(set,f)));
+    if(tc) glideTo(sum.gain,mk,ctx.currentTime,tc); else sum.gain.value=mk;
+    set.forEach(([fr,q,gg],k)=>{
+      const b=bank[k];
+      if(tc){ glideTo(b.bp.frequency,fr,ctx.currentTime,tc); glideTo(b.bp.Q,q,ctx.currentTime,tc); glideTo(b.g.gain,gg,ctx.currentTime,tc); }
+      else { b.bp.frequency.value=fr; b.bp.Q.value=q; b.g.gain.value=gg; }
+    });
+  };
+  shape(0);
+  const sources=[], oscs=[];
+  // slow random pitch drift (jitter), shared by the section
+  const jit=ctx.createBufferSource(); jit.buffer=noiseBuf; jit.loop=true;
+  const jl=ctx.createBiquadFilter(); jl.type="lowpass"; jl.frequency.value=4; jl.Q.value=.5;
+  const jg=ctx.createGain(); jg.gain.value=t.jitter*110;   // lowpassed noise is tiny; this lands near the stated cents
+  jit.connect(jl).connect(jg); jit.start(now, Math.random()*1.8); sources.push(jit);
+  const n = perf==="light" ? Math.min(2,t.n) : t.n;
+  for(let i=0;i<n;i++){
+    const osc=ctx.createOscillator(); osc.setPeriodicWave(glottalWave); osc.frequency.value=f;
+    const det = n>1 ? (i-(n-1)/2)*t.spread + (Math.random()-.5)*4 : 0;
+    const t0 = now + i*0.014;                                   // singers never enter exactly together
+    osc.detune.setValueAtTime(det - t.scoop*(.7+Math.random()*.6), t0);  // scoop up into the note
+    osc.detune.linearRampToValueAtTime(det, t0 + .08 + Math.random()*.05);
+    const vib=ctx.createOscillator(), vg=ctx.createGain();
+    vib.frequency.value=t.vib.rate*(.92+Math.random()*.16); vg.gain.value=0;
+    vg.gain.setValueAtTime(0, now+t.vib.delay);
+    vg.gain.linearRampToValueAtTime(t.vib.cents*(.8+Math.random()*.4), now+t.vib.delay+.7);
+    vib.connect(vg).connect(osc.detune); jg.connect(osc.detune);
+    const sg=ctx.createGain(); sg.gain.value=1/Math.sqrt(n);
+    osc.connect(sg).connect(src);
+    osc.start(t0); vib.start(now); sources.push(osc,vib); oscs.push(osc);
+  }
+  // breath through the same resonators, strongest at the onset
+  const br=ctx.createBufferSource(); br.buffer=noiseBuf; br.loop=true;
+  const bh=ctx.createBiquadFilter(); bh.type="highpass"; bh.frequency.value=900;
+  const bg=ctx.createGain(); bg.gain.setValueAtTime(t.breath*3, now); bg.gain.setTargetAtTime(t.breath, now+.05, .12);
+  br.connect(bh).connect(bg).connect(src); br.start(now, Math.random()*1.8); sources.push(br);
+  let released=false;
+  return {
+    setPitch(p){
+      if(released) return;
+      f=mtof(p); const tt=ctx.currentTime;
+      for(const o of oscs) glideTo(o.frequency, f, tt, .004);
+      if(part==="alto"||part==="soprano") shape(.02);
+    },
+    setVowel(v){ if(released||v===vowel) return; vowel=v; shape(.07); },
+    release(){
+      if(released) return; released=true;
+      const tt=ctx.currentTime, g=env.gain;
+      if(g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(tt); else { g.cancelScheduledValues(tt); g.setValueAtTime(g.value,tt); }
+      g.setTargetAtTime(0, tt, t.release/3);
+      const stop=tt+t.release*2+.05;
+      sources.forEach(s=>s.stop(stop));
+      setTimeout(()=>env.disconnect(), (stop-tt)*1000+100);
+    }
+  };
+}
 function makeVoice(t, dest, pitch, vel){
+  if(t.singer) return makeSinger(t, dest, pitch, vel);
   const now=ctx.currentTime, f=mtof(pitch);
   const env=ctx.createGain(); env.gain.value=0; env.connect(dest);
   const peak = t.level*(.55+.45*vel/127);
@@ -520,6 +663,7 @@ function startOnSlot(idx,ch,note,vel,key){
   Object.assign(s,{key,ch,note,voice:null});
   keys.set(key,idx);
   (s.onsets||(s.onsets=[])).push([performance.now(), pitchFor(s)]);
+  advanceSyllable();
   if(ctx) s.voice=makeVoice(TIMBRES[s.timbre], s.gain, pitchFor(s), vel);
   else notice("MIDI is arriving but sound is off. Press start to hear it.");
 }
@@ -694,6 +838,9 @@ tSel.onchange=()=>{ writeParam(237,+tSel.value); resync(); };
     const now=performance.now(); if(now-last>40){ last=now; writeParam(addr,+el.value); } };
   el.onchange=()=>{ writeParam(addr,+el.value); resync(); };
 });
+const vowelSel=document.getElementById("vowel"); vowelSel.value=vowelMode;
+vowelSel.onchange=()=>{ vowelMode=vowelSel.value; kyrieIdx=-1; underlay.length=0;
+  slots.forEach(s=>s.voice?.setVowel?.(currentVowel())); save(); };
 const lookSel=document.getElementById("look"); lookSel.value=look;
 lookSel.onchange=()=>{ look=lookSel.value;
   if(look==="plain") document.documentElement.dataset.look="plain"; else delete document.documentElement.dataset.look;
@@ -837,6 +984,12 @@ function frame(){
     const yy=Math.round(y(n))+.5; g.strokeStyle= scr ? rubric : rule; g.globalAlpha = scr ? (pc===0 ? .8 : .45) : 1; g.lineWidth= scr ? 1.5 : 1;
     g.beginPath(); g.moveTo(38,yy); g.lineTo(W,yy); g.stroke(); g.globalAlpha=1;
     g.fillStyle= scr ? rubric : muted; g.fillText((pc===0?"C":"F")+(Math.floor(n/12)-1),8,yy);
+  }
+  while(underlay.length && underlay[0][0] < now-SPAN-500) underlay.shift();
+  if(vowelMode==="kyrie" && underlay.length){
+    g.fillStyle=ink; g.font=(scr?"italic 20px ":"15px ")+bodyFont; g.textBaseline="alphabetic";
+    for(const [t,txt] of underlay) g.fillText(txt, x(t)+2, H-30);
+    g.textBaseline="middle";
   }
   slots.forEach((s,i)=>{
     g.strokeStyle=colors[i]; g.lineWidth=3; g.lineJoin="round"; g.lineCap="round";

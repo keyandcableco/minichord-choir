@@ -6,6 +6,7 @@ A browser page that plays each chord voice of the [minichord](https://github.com
 
 ## What it does
 
+- **Singers.** Choir section, solo singer and monk voices built from five-formant bass, tenor, alto and soprano vowel tables, with a glottal source, a few singers per section slightly out of step, pitch drift, a scoop into each note and breath. Pick the vowel, or sing "Kyrie eleison" one syllable per chord.
 - **Four voices, four instruments.** Each MPE member channel (2 to 5 on the chord port) gets its own timbre, level and pan. Voices can also be assigned by pitch, lowest note to highest.
 - **A live pitch trace** draws each voice as its own line, so glides and voice leading are visible.
 - **Device controls over sysex:** MPE output, voice leading and its range, glide time and temperament, read back from the minichord so the page shows its real state. Changes are live; save the preset in [Sound Lab](https://keyandcableco.github.io/minichord-soundlab/) to keep them.
