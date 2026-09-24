@@ -12,6 +12,7 @@ A browser page that plays each chord voice of the [minichord](https://github.com
 - **Voice motion readout:** how far each voice moved at the last chord change, with a running average, to compare voice leading on and off.
 - **MPE MIDI recorder:** saves what the minichord sends as a MIDI file with every per-voice bend intact, for an MPE-aware host.
 - **Test buttons** that play a chord and a voice-led glide without a minichord attached.
+- **Two looks:** Scriptorium, a chant-book page with rubric staff lines and square neumes, and Workbench, a plain one. Plus a cathedral reverb, since it's a choir.
 
 ## Requirements
 
@@ -33,4 +34,4 @@ then visit http://localhost:8000/.
 
 - The page listens to the minichord's chord port (Port 1) by default. The harp port declares its own MPE zone on the same channel numbers, so mixing both ports would put harp strings into the chord voices.
 - Any sysex write marks a controller as connected, which pauses the minichord's autosave of knob moves until it is unplugged, the same as with Sound Lab.
-- If audio stutters on an older computer, choose "Light" in the performance menu.
+- If audio stutters on an older computer, choose "Light" in the performance menu, and turn the reverb down.

@@ -4,98 +4,152 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Minichord choir</title>
+<meta name="description" content="Four MPE voices, four instruments, one chord button. A browser choir for the minichord's MPE output, with voice leading, glide, temperament and an MPE MIDI recorder.">
+<meta property="og:title" content="Minichord choir">
+<meta property="og:description" content="Four MPE voices, four instruments, one chord button.">
+<meta property="og:image" content="https://keyandcableco.github.io/minichord-choir/preview.png">
+<meta property="og:url" content="https://keyandcableco.github.io/minichord-choir/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎼</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Instrument+Sans:wght@400;500;600;700&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
 <style>
+/* two looks share one set of token names: Scriptorium (default) and Workbench */
 :root{
-  --paper:#EDF0F3; --panel:#F8FAFB; --ink:#18202B; --muted:#5A6574; --rule:#CAD1D9;
-  --v0:#3346A8; --v1:#157366; --v2:#9A690B; --v3:#B3365D; --focus:#2F6FE0;
+  --paper:#EADBB8; --panel:#F3E8CF; --ink:#2A1D12; --muted:#6E5A43; --rule:#CDB88F; --rubric:#A5281B; --gilt:#B8862A;
+  --v0:#24478F; --v1:#2F6B4F; --v2:#A06A12; --v3:#6B2D5C; --focus:#24478F;
+  --body:"EB Garamond",Garamond,"Iowan Old Style",Georgia,serif; --display:"UnifrakturMaguntia","EB Garamond",Georgia,serif;
+  --radius:3px; --base:18px;
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
   color-scheme:light dark;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --paper:#141920; --panel:#1C232C; --ink:#E3E8EE; --muted:#93A0AF; --rule:#2E3844;
-    --v0:#8E9EF2; --v1:#58C4B2; --v2:#E2B24F; --v3:#EF82A4; --focus:#7FA8FF;
+    --paper:#1C1610; --panel:#271F17; --ink:#EADCC0; --muted:#B19E80; --rule:#4A3C2C; --rubric:#DD6352; --gilt:#E0B458;
+    --v0:#86A6EE; --v1:#72C39C; --v2:#E6B452; --v3:#C98BBE; --focus:#E0B458;
   }
 }
 :root[data-theme="dark"]{
-  --paper:#141920; --panel:#1C232C; --ink:#E3E8EE; --muted:#93A0AF; --rule:#2E3844;
+  --paper:#1C1610; --panel:#271F17; --ink:#EADCC0; --muted:#B19E80; --rule:#4A3C2C; --rubric:#DD6352; --gilt:#E0B458;
+  --v0:#86A6EE; --v1:#72C39C; --v2:#E6B452; --v3:#C98BBE; --focus:#E0B458;
+}
+:root[data-look="plain"]{
+  --paper:#EDF0F3; --panel:#F8FAFB; --ink:#18202B; --muted:#5A6574; --rule:#CAD1D9; --rubric:#5A6574; --gilt:#CAD1D9;
+  --v0:#3346A8; --v1:#157366; --v2:#9A690B; --v3:#B3365D; --focus:#2F6FE0;
+  --body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --display:"Instrument Sans",system-ui,sans-serif;
+  --radius:10px; --base:16px;
+}
+@media (prefers-color-scheme:dark){
+  :root[data-look="plain"]:not([data-theme="light"]){
+    --paper:#141920; --panel:#1C232C; --ink:#E3E8EE; --muted:#93A0AF; --rule:#2E3844; --rubric:#93A0AF; --gilt:#2E3844;
+    --v0:#8E9EF2; --v1:#58C4B2; --v2:#E2B24F; --v3:#EF82A4; --focus:#7FA8FF;
+  }
+}
+:root[data-look="plain"][data-theme="dark"]{
+  --paper:#141920; --panel:#1C232C; --ink:#E3E8EE; --muted:#93A0AF; --rule:#2E3844; --rubric:#93A0AF; --gilt:#2E3844;
   --v0:#8E9EF2; --v1:#58C4B2; --v2:#E2B24F; --v3:#EF82A4; --focus:#7FA8FF;
 }
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *,*::before,*::after{box-sizing:inherit}
-body{margin:0;background:var(--paper);color:var(--ink);
-  font:400 16px/1.5 "Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-  font-variant-numeric:tabular-nums}
-main{max-width:1100px;margin:0 auto;padding:28px 20px 48px}
-h1{font-size:2.6rem;line-height:1;font-weight:700;letter-spacing:-.02em;margin:0}
-.lede{color:var(--muted);margin:.5rem 0 0;max-width:62ch}
-.top{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
-.connect{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-button,select,input{font:inherit;color:inherit}
-button{cursor:pointer;border:1px solid var(--rule);background:var(--panel);border-radius:8px;padding:.5rem .95rem;font-weight:600}
-button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
-button:disabled{opacity:.5;cursor:default}
-select{border:1px solid var(--rule);background:var(--panel);border-radius:8px;padding:.45rem .6rem;max-width:100%}
-:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-.status{font-size:.92rem;color:var(--muted)}
-.status b{color:var(--ink);font-weight:600}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 var(--base)/1.55 var(--body);font-variant-numeric:lining-nums tabular-nums}
+/* vellum: faint mottling, only in the Scriptorium look */
+:root:not([data-look="plain"]) body{
+  background-image:radial-gradient(ellipse at 20% 10%,rgba(255,255,255,.18),transparent 55%),
+    radial-gradient(ellipse at 85% 80%,rgba(120,80,30,.10),transparent 60%)}
+main{max-width:1100px;margin:0 auto;padding:30px 20px 48px}
 
-.stage{position:relative;background:var(--panel);border:1px solid var(--rule);border-radius:14px;overflow:hidden}
+/* title and the illuminated initial */
+h1{font-family:var(--display);font-weight:400;font-size:3.6rem;line-height:1;margin:0;letter-spacing:0}
+:root[data-look="plain"] h1{font-weight:700;font-size:2.6rem;letter-spacing:-.02em}
+.initial{display:inline-grid;place-items:center;width:1.12em;height:1.18em;margin-right:.06em;vertical-align:-.12em;
+  background:#24478F;color:#EFC96A;border:3px double #EFC96A;border-radius:2px;font-size:1em}
+:root[data-look="plain"] .initial{all:unset}
+.subtitle{font-style:italic;color:var(--muted);margin:.3rem 0 0;font-size:1.05rem}
+:root[data-look="plain"] .subtitle{display:none}
+.lede{color:var(--muted);margin:.7rem 0 0;max-width:60ch}
+.home{font-size:.95rem;color:var(--muted);margin:.4rem 0 0}
+a{color:var(--rubric);text-underline-offset:.15em}
+:root[data-look="plain"] a{color:var(--v0)}
+.top{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+.connect{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.connect label{display:flex;align-items:center;gap:8px;font-size:.92rem;color:var(--muted)}
+.connect input[type=range]{width:110px;accent-color:var(--rubric)}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--rule);background:var(--panel);border-radius:var(--radius);padding:.45rem .95rem;font-weight:600}
+button.primary{background:var(--rubric);color:var(--panel);border-color:var(--rubric)}
+:root[data-look="plain"] button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button:disabled{opacity:.5;cursor:default}
+select{border:1px solid var(--rule);background:var(--panel);border-radius:var(--radius);padding:.4rem .6rem;max-width:100%}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.status{font-size:.95rem;color:var(--muted)}
+.status b{color:var(--ink);font-weight:600}
+.before{font-size:.95rem;margin:0 0 16px;padding:.55rem .8rem;border-left:3px solid var(--rubric);background:var(--panel);border-radius:0 var(--radius) var(--radius) 0;max-width:80ch}
+
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);padding:16px}
+:root:not([data-look="plain"]) .panel{box-shadow:inset 0 0 0 3px var(--panel),inset 0 0 0 4px var(--rule)}
+.panel h2{font-size:1.2rem;font-weight:600;margin:0 0 .5rem;color:var(--rubric)}
+:root[data-look="plain"] .panel h2{font-size:1.05rem;color:var(--ink)}
+.panel p{margin:.4rem 0;color:var(--muted);font-size:.95rem;max-width:60ch}
+
+.stage{position:relative;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden}
 canvas{display:block;width:100%;height:280px}
-.stage .hint{position:absolute;left:14px;bottom:10px;font-size:.8rem;color:var(--muted);pointer-events:none}
-.stage .empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:.95rem;pointer-events:none;text-align:center;padding:20px}
+.stage .empty[hidden]{display:none}
+.stage .hint{position:absolute;left:14px;bottom:8px;font-size:.85rem;color:var(--muted);pointer-events:none;font-style:italic}
+.stage .empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);pointer-events:none;text-align:center;padding:20px;font-style:italic}
 
 .voices{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:14px}
 @media (max-width:820px){.voices{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:460px){.voices{grid-template-columns:1fr}}
-.voice{background:var(--panel);border:1px solid var(--rule);border-top:5px solid var(--c);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .08s}
+.voice{background:var(--panel);border:1px solid var(--rule);border-top:5px solid var(--c);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .08s}
 .voice.on{box-shadow:inset 0 0 0 1px var(--c)}
-.voice .note{font-size:2.2rem;font-weight:700;line-height:1;color:var(--c);min-height:2.2rem;display:flex;align-items:baseline;gap:.4rem}
-.voice .note small{font-size:.85rem;font-weight:500;color:var(--muted)}
-.voice .route{font-size:.85rem;color:var(--muted)}
-.voice label{display:grid;grid-template-columns:3.2rem 1fr;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)}
+.voice .part{font-family:var(--display);font-size:1.6rem;line-height:1;color:var(--c)}
+:root[data-look="plain"] .voice .part{display:none}
+.voice .note{font-size:2.2rem;font-weight:600;line-height:1;color:var(--c);min-height:2.2rem;display:flex;align-items:baseline;gap:.4rem}
+.voice .note small{font-size:.9rem;font-weight:500;color:var(--muted)}
+.voice .route{font-size:.9rem;color:var(--muted)}
+.voice label{display:grid;grid-template-columns:3.2rem 1fr;align-items:center;gap:8px;font-size:.9rem;color:var(--muted)}
 .voice input[type=range]{width:100%;accent-color:var(--c)}
-.voice .timbre{font-weight:600;font-size:1rem}
+.voice .timbre{font-weight:600}
 .toggles{display:flex;gap:8px}
-.toggles button{flex:1;padding:.35rem;font-size:.85rem}
+.toggles button{flex:1;padding:.3rem;font-size:.9rem}
 .toggles button[aria-pressed="true"]{background:var(--c);color:var(--panel);border-color:var(--c)}
+.moved{font-size:.9rem;color:var(--muted);min-height:1.3em;font-style:italic}
 
-.bench{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
-@media (max-width:820px){.bench{grid-template-columns:1fr}}
-.panel{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:16px}
-.panel h2{font-size:1.05rem;margin:0 0 .6rem}
-.panel p{margin:.4rem 0;color:var(--muted);font-size:.92rem;max-width:60ch}
-.seg{display:inline-flex;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
-.seg label{padding:.45rem .9rem;cursor:pointer;font-weight:600;font-size:.92rem}
-.seg input{position:absolute;opacity:0;pointer-events:none}
-.seg input:checked+span{color:var(--paper)}
-.seg label:has(input:checked){background:var(--ink);color:var(--paper)}
-.seg label:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:-2px}
-.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
-.notice{min-height:1.4em;font-size:.88rem;color:var(--v3);margin-top:8px}
 .device{margin:0 0 18px}
 .device[hidden]{display:none}
 .dgrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px 18px;margin-top:10px}
 @media (max-width:900px){.dgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:460px){.dgrid{grid-template-columns:1fr}}
-.ctl{display:flex;flex-direction:column;gap:6px;font-size:.9rem}
+.ctl{display:flex;flex-direction:column;gap:6px;font-size:.95rem}
 .ctl .lbl{font-weight:600;display:flex;justify-content:space-between;gap:8px}
 .ctl output{font-weight:500;color:var(--muted)}
-.ctl input[type=range]{width:100%;accent-color:var(--ink)}
-.fine{font-size:.85rem;color:var(--muted);margin:.8rem 0 0}
-.moved{font-size:.85rem;color:var(--muted);min-height:1.3em}
-.bars{display:flex;align-items:flex-end;gap:4px;height:48px;margin:.6rem 0 .2rem}
-.bars span{flex:1;max-width:22px;background:var(--rule);border-radius:3px 3px 0 0;min-height:2px}
-.bars span:last-child{background:var(--ink)}
-.big{font-size:1.6rem;font-weight:700;line-height:1.1}
-button.rec[aria-pressed="true"]{background:var(--v3);color:var(--panel);border-color:var(--v3)}
+.ctl input[type=range]{width:100%;accent-color:var(--rubric)}
 .switch{min-width:4.5rem}
 .switch[aria-pressed="true"]{background:var(--v1);color:var(--panel);border-color:var(--v1)}
-.home{font-size:.92rem;color:var(--muted)}
+.fine{font-size:.88rem;color:var(--muted);margin:.8rem 0 0}
+
+.bench{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+@media (max-width:820px){.bench{grid-template-columns:1fr}}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden}
+.seg label{padding:.4rem .9rem;cursor:pointer;font-weight:600;font-size:.95rem}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--ink);color:var(--paper)}
+.seg label:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:-2px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+.notice{min-height:1.4em;font-size:.92rem;color:var(--rubric);margin-top:8px}
+.bars{display:flex;align-items:flex-end;gap:4px;height:48px;margin:.6rem 0 .2rem}
+.bars span{flex:1;max-width:22px;background:var(--rule);border-radius:2px 2px 0 0;min-height:2px}
+.bars span:last-child{background:var(--rubric)}
+.big{font-size:1.7rem;font-weight:600;line-height:1.1;color:var(--ink)}
+button.rec[aria-pressed="true"]{background:var(--rubric);color:var(--panel);border-color:var(--rubric)}
+
+footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--rule);color:var(--muted);font-size:.95rem;display:grid;gap:.4rem}
+footer p{margin:0;max-width:80ch}
+.explicit{font-family:var(--display);color:var(--rubric);font-size:1.3rem;margin-top:.4rem}
+:root[data-look="plain"] .explicit{display:none}
 @media (prefers-reduced-motion:reduce){.voice{transition:none}}
 </style>
 </head>
@@ -103,16 +157,20 @@ button.rec[aria-pressed="true"]{background:var(--v3);color:var(--panel);border-c
 <main>
   <div class="top">
     <div>
-      <h1>Minichord choir</h1>
+      <h1 aria-label="Minichord choir"><span class="initial" aria-hidden="true">M</span><span aria-hidden="true">inichord Choir</span></h1>
+      <p class="subtitle" lang="la">Schola cantorum ex chorda una</p>
       <p class="lede">One chord button, four instruments. Each voice of the chord arrives on its own MPE channel, and each channel plays its own timbre, glides included.</p>
       <p class="home"><a href="https://keyandcableco.github.io/minichord-soundlab/">Open Sound Lab</a></p>
     </div>
     <div class="connect">
       <button id="start" class="primary">Start sound and MIDI</button>
       <select id="input" aria-label="MIDI input" disabled><option>No MIDI yet</option></select>
+      <label>Reverb <input type="range" id="nave" min="0" max="1" step="0.01"></label>
+      <select id="look" aria-label="Page look"><option value="scriptorium">Scriptorium look</option><option value="plain">Workbench look</option></select>
       <select id="perf" aria-label="Performance mode"><option value="standard">Standard</option><option value="light">Light, for older computers</option></select>
     </div>
   </div>
+  <p class="before">You'll need a minichord running the unofficial <a href="https://github.com/keyandcableco/minichord/tree/test-allFeatures">test-allFeatures firmware</a> (flash <a href="https://github.com/keyandcableco/minichord/blob/test-allFeatures/firmware/firmware.hex">firmware.hex</a> with the Teensy Loader), and Chrome, Edge or Opera. No minichord? The test buttons at the bottom play without one.</p>
   <p class="status" id="status">Press start, then allow MIDI access when the browser asks. Allowing system-exclusive messages lets this page switch MPE output on the minichord.</p>
   <section class="device panel" id="device" hidden>
     <h2>On the minichord</h2>
@@ -170,6 +228,11 @@ button.rec[aria-pressed="true"]{background:var(--v3);color:var(--panel);border-c
       </div>
     </section>
   </div>
+  <footer>
+    <p>The minichord is <a href="https://github.com/BenjaminPoilve/minichord">Benjamin Poilve's open-source instrument</a>. MPE output, voice leading and the temperaments come from the unofficial <a href="https://github.com/keyandcableco/minichord/tree/test-allFeatures">test-allFeatures firmware</a>; its settings editor is <a href="https://keyandcableco.github.io/minichord-soundlab/">Sound Lab</a>.</p>
+    <p>Made by <a href="https://keyandcable.com">The Key &amp; Cable Company</a>. Source on <a href="https://github.com/keyandcableco/minichord-choir">GitHub</a>.</p>
+    <p class="explicit" lang="la">Explicit.</p>
+  </footer>
 </main>
 
 <script>
@@ -185,6 +248,9 @@ const TIMBRES = {
     attack:.22, release:.55, vib:{rate:5,cents:16,delay:.25}, level:1.8},
   "Choir ooh": {oscs:[{type:"triangle",detune:-7,gain:.45},{type:"sawtooth",detune:7,gain:.25}],
     formants:[[330,5,1],[720,7,.35],[2400,10,.08]], attack:.28, release:.6, vib:{rate:4.8,cents:14,delay:.3}, level:2.2},
+  "Monk": {oscs:[{type:"sawtooth",detune:-5,gain:.3},{type:"sawtooth",detune:5,gain:.3},{type:"triangle",gain:.2}],
+    formants:[[450,6,1],[800,7,.45],[2830,12,.08]], noise:{freq:2500,q:.8,gain:.008},
+    attack:.3, release:.7, vib:{rate:4.5,cents:8,delay:.5}, level:2.0},
   "Flute": {oscs:[{type:"sine",gain:.6},{type:"sine",ratio:2,gain:.08},{type:"triangle",detune:4,gain:.12}],
     noise:{freq:2600,q:1.2,gain:.03}, attack:.06, release:.14, vib:{rate:5.2,cents:10,delay:.22}, level:.5},
   "Brass": {oscs:[{type:"sawtooth",detune:-4,gain:.35},{type:"sawtooth",detune:4,gain:.35}],
@@ -192,15 +258,17 @@ const TIMBRES = {
   "Organ": {oscs:[{type:"organ",gain:.5}], attack:.008, release:.05, level:.45},
 };
 const DEFAULTS = [
-  {timbre:"Bowed string", vol:.8, pan:-.45},
-  {timbre:"Clarinet",     vol:.75, pan:-.15},
+  {timbre:"Monk",         vol:.85, pan:-.45},
+  {timbre:"Bowed string", vol:.75, pan:-.15},
   {timbre:"Choir aah",    vol:.8, pan:.15},
   {timbre:"Flute",        vol:.75, pan:.45},
 ];
+const PARTS = ["Bassus","Tenor","Altus","Cantus"];
 const PITCH_NAMES = ["Lowest note","Second from bottom","Third from bottom","Highest note"];
 const NAMES = ["C","C♯","D","E♭","E","F","F♯","G","A♭","A","B♭","B"];
 
 // ---------- state ----------
+let reverb=null, wet=null, reverbOn=false;
 let ctx=null, master=null, noiseBuf=null, organWave=null, midi=null;
 const TEMPERAMENTS=["Equal","Meantone","Just","Pythagorean","Werckmeister III","Kirnberger III","Vallotti","Young","Kellner","1/6 Meantone","19-EDO","31-EDO"];
 const dev={110:null,111:null,112:null,199:null,237:null};
@@ -208,6 +276,7 @@ let zoneSeen=false, out=null, sysexOK=false, deviceMpe=null, singlePort=null, zo
 // the minichord's chord port (Port 1) carries the chord and the sysex; Port 2 is the harp
 const isChordPort = n => /minichord/i.test(n) && (n.includes("1") || n.trim().toLowerCase()==="minichord");
 let mode="channel";
+let look="scriptorium", nave=.35;
 let perf = (navigator.hardwareConcurrency||4) <= 4 ? "light" : "standard";
 const chans = Array.from({length:16},(_,i)=>({bend:0, range:i===0?2:48, rpn:[127,127]}));
 const zone = {type:"lower", known:false, members:15};
@@ -220,10 +289,13 @@ try{
   const saved = JSON.parse(localStorage.getItem("mc-choir")||"null");
   if(saved){ saved.slots?.forEach((s,i)=>{ if(slots[i]) Object.assign(slots[i], {timbre:TIMBRES[s.timbre]?s.timbre:slots[i].timbre, vol:s.vol, pan:s.pan, chan:s.chan}); });
     if(saved.mode==="pitch"||saved.mode==="channel") mode=saved.mode;
-    if(saved.perf==="light"||saved.perf==="standard") perf=saved.perf; }
+    if(saved.perf==="light"||saved.perf==="standard") perf=saved.perf;
+    if(saved.look==="plain"||saved.look==="scriptorium") look=saved.look;
+    if(typeof saved.nave==="number") nave=Math.max(0,Math.min(1,saved.nave)); }
 }catch(e){}
-function save(){ try{ localStorage.setItem("mc-choir", JSON.stringify({mode, perf, slots:slots.map(s=>({timbre:s.timbre,vol:s.vol,pan:s.pan,chan:s.chan}))})); }catch(e){} }
+function save(){ try{ localStorage.setItem("mc-choir", JSON.stringify({mode, perf, look, nave, slots:slots.map(s=>({timbre:s.timbre,vol:s.vol,pan:s.pan,chan:s.chan}))})); }catch(e){} }
 
+if(look==="plain") document.documentElement.dataset.look="plain";
 const masterIdx = () => zone.type==="lower" ? 0 : 15;
 function resolvedChan(s){
   if(s.chan!=="auto") return +s.chan;
@@ -244,6 +316,13 @@ function initAudio(){
   comp.threshold.value=-14; comp.ratio.value=4;
   master = ctx.createGain(); master.gain.value=.6;
   master.connect(comp).connect(ctx.destination);
+  // a stone nave: decaying stereo noise as the impulse response
+  const secs = perf==="light" ? 2 : 3.6, n=Math.floor(ctx.sampleRate*secs);
+  const ir=ctx.createBuffer(2,n,ctx.sampleRate);
+  for(let c=0;c<2;c++){ const d=ir.getChannelData(c); for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/n,3.2); }
+  reverb=ctx.createConvolver(); reverb.buffer=ir;
+  wet=ctx.createGain(); reverb.connect(wet).connect(comp);
+  reverbOn=false; applyNave();
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate*2, ctx.sampleRate);
   const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
   const h=[0,1,.7,.35,.25,0,0,0,.2];
@@ -251,6 +330,13 @@ function initAudio(){
   slots.forEach(s=>{ s.gain=ctx.createGain(); s.panner=ctx.createStereoPanner();
     s.gain.connect(s.panner).connect(master); });
   applyMix();
+}
+function applyNave(){
+  if(!ctx) return;
+  const want=nave>0.001;
+  if(want && !reverbOn){ master.connect(reverb); reverbOn=true; }
+  if(!want && reverbOn){ master.disconnect(reverb); reverbOn=false; }
+  wet.gain.setTargetAtTime(nave*0.9, ctx.currentTime, .03);
 }
 function applyMix(){
   if(!ctx) return;
@@ -433,6 +519,7 @@ function startOnSlot(idx,ch,note,vel,key){
   if(s.key) keys.delete(s.key);
   Object.assign(s,{key,ch,note,voice:null});
   keys.set(key,idx);
+  (s.onsets||(s.onsets=[])).push([performance.now(), pitchFor(s)]);
   if(ctx) s.voice=makeVoice(TIMBRES[s.timbre], s.gain, pitchFor(s), vel);
   else notice("MIDI is arriving but sound is off. Press start to hear it.");
 }
@@ -548,6 +635,7 @@ slots.forEach((s,i)=>{
   const el=document.createElement("section");
   el.className="voice"; el.style.setProperty("--c",`var(--v${i})`);
   el.innerHTML=`
+    <div class="part" aria-hidden="true">${PARTS[i]}</div>
     <select class="timbre" aria-label="Instrument for voice ${i+1}">${Object.keys(TIMBRES).map(n=>`<option>${n}</option>`).join("")}</select>
     <div class="note" aria-live="off"><span>–</span><small></small></div>
     <div class="route"></div>
@@ -606,6 +694,12 @@ tSel.onchange=()=>{ writeParam(237,+tSel.value); resync(); };
     const now=performance.now(); if(now-last>40){ last=now; writeParam(addr,+el.value); } };
   el.onchange=()=>{ writeParam(addr,+el.value); resync(); };
 });
+const lookSel=document.getElementById("look"); lookSel.value=look;
+lookSel.onchange=()=>{ look=lookSel.value;
+  if(look==="plain") document.documentElement.dataset.look="plain"; else delete document.documentElement.dataset.look;
+  readColors(); save(); };
+const naveEl=document.getElementById("nave"); naveEl.value=nave;
+naveEl.oninput=()=>{ nave=+naveEl.value; applyNave(); save(); };
 const perfSel=document.getElementById("perf"); perfSel.value=perf;
 perfSel.onchange=()=>{
   perf=perfSel.value; save(); resize();
@@ -693,11 +787,12 @@ document.getElementById("glide").onclick=async()=>{
 
 // ---------- trace ----------
 const cv=document.getElementById("trace"), g=cv.getContext("2d");
-let colors=[], ink="", muted="", rule="";
+let colors=[], ink="", muted="", rule="", rubric="", bodyFont="";
 function readColors(){
   const cs=getComputedStyle(document.documentElement);
   colors=[0,1,2,3].map(i=>cs.getPropertyValue(`--v${i}`).trim());
   ink=cs.getPropertyValue("--ink").trim(); muted=cs.getPropertyValue("--muted").trim(); rule=cs.getPropertyValue("--rule").trim();
+  rubric=cs.getPropertyValue("--rubric").trim(); bodyFont=cs.getPropertyValue("--body").trim();
 }
 function resize(){ const dpr= perf==="light" ? 1 : Math.min(2, window.devicePixelRatio||1); cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr; g.setTransform(dpr,0,0,dpr,0,0); }
 readColors(); resize();
@@ -734,11 +829,14 @@ function frame(){
   const y=p=>H-10-(p-view.lo)/(view.hi-view.lo)*(H-20);
   const x=t=>W-(now-t)/SPAN*W;
   g.clearRect(0,0,W,H);
-  g.font='12px "Instrument Sans", system-ui, sans-serif'; g.textBaseline="middle";
-  for(let n=Math.ceil(view.lo/12)*12; n<=view.hi; n+=12){
-    const yy=Math.round(y(n))+.5; g.strokeStyle=rule; g.lineWidth=1;
-    g.beginPath(); g.moveTo(34,yy); g.lineTo(W,yy); g.stroke();
-    g.fillStyle=muted; g.fillText("C"+(n/12-1),8,yy);
+  const scr = look!=="plain";
+  g.font=(scr?"italic 14px ":"12px ")+bodyFont; g.textBaseline="middle";
+  for(let n=Math.floor(view.lo)-1; n<=view.hi; n++){
+    const pc=((n%12)+12)%12;
+    if(!(pc===0 || (scr && pc===5))) continue;            // C lines, and F lines as the second clef in the manuscript look
+    const yy=Math.round(y(n))+.5; g.strokeStyle= scr ? rubric : rule; g.globalAlpha = scr ? (pc===0 ? .8 : .45) : 1; g.lineWidth= scr ? 1.5 : 1;
+    g.beginPath(); g.moveTo(38,yy); g.lineTo(W,yy); g.stroke(); g.globalAlpha=1;
+    g.fillStyle= scr ? rubric : muted; g.fillText((pc===0?"C":"F")+(Math.floor(n/12)-1),8,yy);
   }
   slots.forEach((s,i)=>{
     g.strokeStyle=colors[i]; g.lineWidth=3; g.lineJoin="round"; g.lineCap="round";
@@ -749,8 +847,17 @@ function frame(){
       if(pen) g.lineTo(xx,yy); else { g.moveTo(xx,yy); pen=true; }
     }
     g.stroke();
+    g.fillStyle=colors[i];
+    if(s.onsets){
+      while(s.onsets.length && s.onsets[0][0] < now-SPAN-200) s.onsets.shift();
+      if(scr) for(const [t,p] of s.onsets){ const xx=x(t), yy=y(p); g.fillRect(xx-5,yy-5,10,10); }
+    }
     const last=s.hist[s.hist.length-1];
-    if(last && last[1]!==null){ g.fillStyle=colors[i]; g.beginPath(); g.arc(W-6,y(last[1]),5,0,Math.PI*2); g.fill(); }
+    if(last && last[1]!==null){
+      const yy=y(last[1]); g.beginPath();
+      if(scr) g.rect(W-13,yy-6,12,12); else g.arc(W-6,yy,5,0,Math.PI*2);
+      g.fill();
+    }
   });
 }
 renderRoutes(); updateZoneInfo(); requestAnimationFrame(frame);
