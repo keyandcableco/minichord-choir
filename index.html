@@ -165,6 +165,9 @@ footer p{margin:0;max-width:80ch}
     <div class="connect">
       <button id="start" class="primary">Start sound and MIDI</button>
       <select id="input" aria-label="MIDI input" disabled><option>No MIDI yet</option></select>
+      <select id="sampleSet" aria-label="Choir recording">
+        <option value="musyng">Musyng Kite choir</option><option value="fatboy">FatBoy choir</option><option value="fluid">FluidR3 choir</option>
+      </select>
       <select id="vowel" aria-label="What the singers sing">
         <option value="a">Sing “ah”</option><option value="e">Sing “eh”</option><option value="i">Sing “ee”</option>
         <option value="o">Sing “oh”</option><option value="u">Sing “oo”</option><option value="kyrie">Sing “Kyrie eleison”</option>
@@ -175,6 +178,7 @@ footer p{margin:0;max-width:80ch}
     </div>
   </div>
   <p class="before">You'll need a minichord running the unofficial <a href="https://github.com/keyandcableco/minichord/tree/test-allFeatures">test-allFeatures firmware</a> (flash <a href="https://github.com/keyandcableco/minichord/blob/test-allFeatures/firmware/firmware.hex">firmware.hex</a> with the Teensy Loader), and Chrome, Edge or Opera. No minichord? The test buttons at the bottom play without one.</p>
+  <p class="status" id="sampleStatus" aria-live="polite"></p>
   <p class="status" id="status">Press start, then allow MIDI access when the browser asks. Allowing system-exclusive messages lets this page switch MPE output on the minichord.</p>
   <section class="device panel" id="device" hidden>
     <h2>On the minichord</h2>
@@ -234,6 +238,7 @@ footer p{margin:0;max-width:80ch}
   </div>
   <footer>
     <p>The minichord is <a href="https://github.com/BenjaminPoilve/minichord">Benjamin Poilve's open-source instrument</a>. MPE output, voice leading and the temperaments come from the unofficial <a href="https://github.com/keyandcableco/minichord/tree/test-allFeatures">test-allFeatures firmware</a>; its settings editor is <a href="https://keyandcableco.github.io/minichord-soundlab/">Sound Lab</a>.</p>
+    <p>Choir recordings from the FluidR3 (CC BY 3.0), Musyng Kite and FatBoy (CC BY-SA 3.0) soundfonts, as rendered by <a href="https://github.com/gleitz/midi-js-soundfonts">midi-js-soundfonts</a>. See <a href="https://github.com/keyandcableco/minichord-choir/blob/main/samples/README.md">samples/README.md</a>.</p>
     <p>Made by <a href="https://keyandcable.com">The Key &amp; Cable Company</a>. Source on <a href="https://github.com/keyandcableco/minichord-choir">GitHub</a>.</p>
     <p class="explicit" lang="la">Explicit.</p>
   </footer>
@@ -301,12 +306,90 @@ function advanceSyllable(){
   lastSyllableT=now;
 }
 
+// ---------- sampled choir ----------
+const SAMPLE_SETS = {fluid:"FluidR3", musyng:"Musyng Kite", fatboy:"FatBoy"};
+const SAMPLE_NOTES = []; for(let m=36;m<=88;m+=2) SAMPLE_NOTES.push(m);   // whole tones, C2 to E6
+let sampleSet="musyng";
+const banks={};   // set -> {aah:Map(midi->entry), ooh:Map, ready, loading}
+// build a seamless loop into the buffer: the end of the loop region is crossfaded
+// with the audio just before its start, so wrapping from end to start is continuous
+function loopify(buf){
+  const sr=buf.sampleRate, L=buf.length;
+  const ls=Math.floor(1.0*sr), le=Math.min(L-1, Math.floor((buf.duration-.12)*sr)), xf=Math.floor(.3*sr);
+  let e=0, n=0;
+  for(let c=0;c<buf.numberOfChannels;c++){
+    const d=buf.getChannelData(c);
+    for(let i=0;i<xf;i++){
+      const t=i/xf, a=Math.cos(t*Math.PI/2), b=Math.sin(t*Math.PI/2);
+      d[le-xf+i] = d[le-xf+i]*a + d[ls-xf+i]*b;
+    }
+    // resampling reads a few samples past the loop end at the wrap, so continue the start there
+    for(let i=0;i<128 && le+i<L;i++) d[le+i]=d[ls+i];
+    for(let i=ls;i<le;i++){ e+=d[i]*d[i]; n++; }
+  }
+  const rms=Math.sqrt(e/Math.max(1,n));
+  return {buf, loopStart:ls/sr, loopEnd:le/sr, norm: rms>0 ? 0.2/rms : 1};
+}
+async function loadSet(set){
+  if(banks[set] && (banks[set].ready || banks[set].loading)) return;
+  const bank = banks[set] = {aah:new Map(), ooh:new Map(), ready:false, loading:true};
+  const jobs=[]; let done=0; const total=SAMPLE_NOTES.length*2;
+  const status=document.getElementById("sampleStatus");
+  for(const v of ["aah","ooh"]) for(const m of SAMPLE_NOTES){
+    jobs.push(fetch(`samples/${set}/${v}/${m}.mp3`).then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(a=>ctx.decodeAudioData(a)).then(b=>{ bank[v].set(m, loopify(b)); done++;
+        if(set===sampleSet) status.textContent=`Loading choir samples ${done} of ${total}`; }));
+  }
+  try{ await Promise.all(jobs); bank.ready=true; if(set===sampleSet) status.textContent=""; }
+  catch(err){
+    bank.loading=false; delete banks[set];
+    status.textContent = location.protocol==="file:"
+      ? "Choir samples can't load from a file. Serve the folder (python3 -m http.server) and open it from localhost."
+      : "Some choir samples didn't load, so voices fall back to the synthesized choir. Reload to try again.";
+  }
+}
+const vowelIsOoh = v => v==="o" || v==="u";
+function makeSampled(t, dest, pitch, vel){
+  const bank=banks[sampleSet];
+  if(!bank || !bank.ready) return makeSinger(TIMBRES["Choir section"], dest, pitch, vel);
+  const now=ctx.currentTime;
+  const m=SAMPLE_NOTES.reduce((a,b)=>Math.abs(b-pitch)<Math.abs(a-pitch)?b:a);
+  const env=ctx.createGain(); env.gain.value=0; env.connect(dest);
+  env.gain.setValueAtTime(0,now); env.gain.linearRampToValueAtTime(.55+.45*vel/127, now+t.attack);
+  let vowel=currentVowel();
+  const layers=["aah","ooh"].map(v=>{
+    const e=bank[v].get(m);
+    const src=ctx.createBufferSource(); src.buffer=e.buf; src.loop=true; src.loopStart=e.loopStart; src.loopEnd=e.loopEnd;
+    src.playbackRate.value=Math.pow(2,(pitch-m)/12);
+    const g=ctx.createGain(); g.gain.value=e.norm*((v==="ooh")===vowelIsOoh(vowel)?1:0);
+    src.connect(g).connect(env); src.start(now);
+    return {v, src, g, norm:e.norm};
+  });
+  let released=false;
+  return {
+    setPitch(p){ if(released) return; const tt=ctx.currentTime;
+      for(const l of layers) glideTo(l.src.playbackRate, Math.pow(2,(p-m)/12), tt, .004); },
+    setVowel(v){ if(released) return; vowel=v; const tt=ctx.currentTime;
+      for(const l of layers) glideTo(l.g.gain, l.norm*((l.v==="ooh")===vowelIsOoh(v)?1:0), tt, .08); },
+    release(){
+      if(released) return; released=true;
+      const tt=ctx.currentTime, g=env.gain;
+      if(g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(tt); else { g.cancelScheduledValues(tt); g.setValueAtTime(g.value,tt); }
+      g.setTargetAtTime(0, tt, t.release/3);
+      const stop=tt+t.release*2+.05;
+      layers.forEach(l=>l.src.stop(stop));
+      setTimeout(()=>env.disconnect(), (stop-tt)*1000+100);
+    }
+  };
+}
+
 // ---------- timbres ----------
 const TIMBRES = {
   "Bowed string": {oscs:[{type:"sawtooth",detune:-6,gain:.35},{type:"sawtooth",detune:6,gain:.35}],
     filter:{freq:500,track:2.2,q:.9}, attack:.16, release:.35, vib:{rate:5.4,cents:14,delay:.35}, level:.55},
   "Clarinet": {oscs:[{type:"square",gain:.33},{type:"sine",gain:.3}],
     filter:{freq:400,track:2.5,q:1.4}, attack:.035, release:.1, level:.5},
+  "Sampled choir": {sampled:true, attack:.04, release:.6},
   "Choir section": {singer:true, n:3, spread:9, scoop:35, jitter:5, vib:{rate:5.3,cents:22,delay:.35},
     breath:.02, attack:.18, release:.5, level:1},
   "Solo singer": {singer:true, n:1, spread:0, scoop:45, jitter:7, vib:{rate:5.6,cents:38,delay:.28},
@@ -320,10 +403,10 @@ const TIMBRES = {
   "Organ": {oscs:[{type:"organ",gain:.5}], attack:.008, release:.05, level:.45},
 };
 const DEFAULTS = [
-  {timbre:"Monk",          vol:.85, pan:-.45},
-  {timbre:"Choir section", vol:.8,  pan:-.15},
-  {timbre:"Choir section", vol:.8,  pan:.15},
-  {timbre:"Flute",        vol:.75, pan:.45},
+  {timbre:"Sampled choir", vol:.85, pan:-.45},
+  {timbre:"Sampled choir", vol:.8,  pan:-.15},
+  {timbre:"Sampled choir", vol:.8,  pan:.15},
+  {timbre:"Sampled choir", vol:.75, pan:.45},
 ];
 const PARTS = ["Bassus","Tenor","Altus","Cantus"];
 const PITCH_NAMES = ["Lowest note","Second from bottom","Third from bottom","Highest note"];
@@ -350,14 +433,15 @@ const slots = DEFAULTS.map((d,i)=>({i, ...d, mute:false, solo:false, chan:"auto"
 
 try{
   const saved = JSON.parse(localStorage.getItem("mc-choir")||"null");
-  if(saved){ saved.slots?.forEach((s,i)=>{ if(slots[i]) Object.assign(slots[i], {timbre:TIMBRES[s.timbre]?s.timbre:slots[i].timbre, vol:s.vol, pan:s.pan, chan:s.chan}); });
+  if(saved){ saved.slots?.forEach((s,i)=>{ if(slots[i]) Object.assign(slots[i], {timbre:(saved.v>=2 && TIMBRES[s.timbre])?s.timbre:slots[i].timbre, vol:s.vol, pan:s.pan, chan:s.chan}); });
+    if(SAMPLE_SETS[saved.sampleSet]) sampleSet=saved.sampleSet;
     if(saved.mode==="pitch"||saved.mode==="channel") mode=saved.mode;
     if(saved.perf==="light"||saved.perf==="standard") perf=saved.perf;
     if(saved.look==="plain"||saved.look==="scriptorium") look=saved.look;
     if(["a","e","i","o","u","kyrie"].includes(saved.vowelMode)) vowelMode=saved.vowelMode;
     if(typeof saved.nave==="number") nave=Math.max(0,Math.min(1,saved.nave)); }
 }catch(e){}
-function save(){ try{ localStorage.setItem("mc-choir", JSON.stringify({mode, perf, look, nave, vowelMode, slots:slots.map(s=>({timbre:s.timbre,vol:s.vol,pan:s.pan,chan:s.chan}))})); }catch(e){} }
+function save(){ try{ localStorage.setItem("mc-choir", JSON.stringify({v:2, mode, perf, look, nave, vowelMode, sampleSet, slots:slots.map(s=>({timbre:s.timbre,vol:s.vol,pan:s.pan,chan:s.chan}))})); }catch(e){} }
 
 if(look==="plain") document.documentElement.dataset.look="plain";
 const masterIdx = () => zone.type==="lower" ? 0 : 15;
@@ -395,6 +479,8 @@ function initAudio(){
   const N=80, gr=new Float32Array(N), gi=new Float32Array(N);
   for(let k=1;k<N;k++) gi[k]=Math.pow(k,-1.9);
   glottalWave = ctx.createPeriodicWave(gr, gi);
+  for(const k in banks) delete banks[k];   // buffers belong to the old context
+  loadSet(sampleSet);
   slots.forEach(s=>{ s.gain=ctx.createGain(); s.panner=ctx.createStereoPanner();
     s.gain.connect(s.panner).connect(master); });
   applyMix();
@@ -496,6 +582,7 @@ function makeSinger(t, dest, pitch, vel){
   };
 }
 function makeVoice(t, dest, pitch, vel){
+  if(t.sampled) return makeSampled(t, dest, pitch, vel);
   if(t.singer) return makeSinger(t, dest, pitch, vel);
   const now=ctx.currentTime, f=mtof(pitch);
   const env=ctx.createGain(); env.gain.value=0; env.connect(dest);
@@ -838,6 +925,8 @@ tSel.onchange=()=>{ writeParam(237,+tSel.value); resync(); };
     const now=performance.now(); if(now-last>40){ last=now; writeParam(addr,+el.value); } };
   el.onchange=()=>{ writeParam(addr,+el.value); resync(); };
 });
+const setSel=document.getElementById("sampleSet"); setSel.value=sampleSet;
+setSel.onchange=()=>{ sampleSet=setSel.value; save(); if(ctx) loadSet(sampleSet); };
 const vowelSel=document.getElementById("vowel"); vowelSel.value=vowelMode;
 vowelSel.onchange=()=>{ vowelMode=vowelSel.value; kyrieIdx=-1; underlay.length=0;
   slots.forEach(s=>s.voice?.setVowel?.(currentVowel())); save(); };
