@@ -97,6 +97,8 @@ select{border:1px solid var(--rule);background:var(--panel);border-radius:var(--
 .stage{position:relative;background:var(--panel);border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden}
 canvas{display:block;width:100%;height:280px}
 .stage .empty[hidden]{display:none}
+.stage .caption{position:absolute;right:12px;top:10px;padding:.2rem .7rem;border-radius:var(--radius);background:var(--panel);border:1px solid var(--rule);font:italic 700 1.3rem var(--body);color:var(--rubric)}
+.stage .caption[hidden]{display:none}
 .stage .hint{position:absolute;left:14px;bottom:8px;font-size:.85rem;color:var(--muted);pointer-events:none;font-style:italic}
 .stage .empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);pointer-events:none;text-align:center;padding:20px;font-style:italic}
 
@@ -196,6 +198,7 @@ footer p{margin:0;max-width:80ch}
   <div class="stage">
     <canvas id="trace" aria-label="Pitch of each voice over the last eight seconds" role="img"></canvas>
     <div class="empty" id="empty">Play a chord and each voice draws its own line here.</div>
+    <div class="caption" id="caption" hidden aria-live="polite"></div>
     <div class="hint">Last 8 seconds</div>
   </div>
 
@@ -232,8 +235,10 @@ footer p{margin:0;max-width:80ch}
       <div class="row">
         <button id="hold">Hold C major</button>
         <button id="glide">Play glide demo</button>
+        <button id="vlDemo">Voice leading: off, then on</button>
         <button id="panic">Stop all sound</button>
       </div>
+      <p class="fine" id="vlResult">The voice leading demo plays the same eight chords twice, voiced exactly as the minichord voices them: first built up from each root, then voice-led.</p>
     </section>
   </div>
   <footer>
@@ -1000,6 +1005,77 @@ hold.addEventListener("keydown",e=>{ if(e.key===" "||e.key==="Enter"){ e.prevent
 hold.addEventListener("keyup",e=>{ if(e.key===" "||e.key==="Enter") holdOff(); });
 
 let glideRun=0;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function bendTo(ch,semi){ const r=chans[ch].range||48; let v=Math.round(8192+semi/r*8192); v=Math.max(0,Math.min(16383,v)); handleMidi([0xE0|ch, v&127, v>>7]); }
+
+// ---------- the minichord's own voicings, ported from its firmware ----------
+// Without voice leading, a chord is built up from its root in close position: root, third, fifth,
+// then the root again an octave up (or the seventh). With it on, the four voices take the chord's
+// notes, in rising order and never crossing, that move least from the chord sounding now, within
+// `range` semitones of where root position would sit, and every note of the chord must appear.
+// Offsets are semitones above the MIDI base, C3; in C, the roots sit from C3 up to B3.
+function firmwareVoicing(root, tones, prev, on, range=12){
+  const n=tones.length, anchor=[0,1,2,3].map(v=>root+tones[v%n]+12*Math.floor(v/n));
+  if(!on) return anchor;
+  const lo=Math.max(0,Math.min(...anchor)-range), hi=Math.max(...anchor)+range;
+  const pool=[], pt=[];
+  for(let note=lo; note<=hi && pool.length<40; note++){ const i=tones.indexOf(((note-root)%12+12)%12); if(i>=0){ pool.push(note); pt.push(i); } }
+  if(pool.length<4) return anchor;
+  const from=prev||anchor, full=(1<<n)-1, M=1<<n, U=32767;
+  const cost=[0,1,2,3].map(()=>pool.map(()=>new Array(M).fill(U)));
+  const cameI=[0,1,2,3].map(()=>pool.map(()=>new Array(M).fill(0))), cameM=[0,1,2,3].map(()=>pool.map(()=>new Array(M).fill(0)));
+  pool.forEach((p,i)=>{ cost[0][i][1<<pt[i]]=Math.abs(p-from[0]); });
+  for(let v=1;v<4;v++){
+    const best=new Array(M).fill(U), bestI=new Array(M).fill(0);
+    for(let i=0;i<pool.length;i++){
+      if(i>0) for(let m=0;m<M;m++) if(cost[v-1][i-1][m]<best[m]){ best[m]=cost[v-1][i-1][m]; bestI[m]=i-1; }
+      const bit=1<<pt[i], step=Math.abs(pool[i]-from[v]);
+      for(let m=0;m<M;m++){ if(best[m]===U) continue; const r=m|bit, t=best[m]+step;
+        if(t<cost[v][i][r]){ cost[v][i][r]=t; cameI[v][i][r]=bestI[m]; cameM[v][i][r]=m; } }
+    }
+  }
+  let bestTotal=U, idx=0;
+  for(let i=0;i<pool.length;i++) if(cost[3][i][full]<bestTotal){ bestTotal=cost[3][i][full]; idx=i; }
+  if(bestTotal===U) return anchor;
+  const out=[0,0,0,0]; let m=full;
+  for(let v=3;v>=1;v--){ out[v]=pool[idx]; const ni=cameI[v][idx][m], nm=cameM[v][idx][m]; idx=ni; m=nm; }
+  out[0]=pool[idx];
+  return out;
+}
+const VL_TONES={M:[0,4,7], m:[0,3,7], "7":[0,4,7,10]};
+const VL_PROG=[["C",0,"M"],["Am",9,"m"],["Dm",2,"m"],["G7",7,"7"],["C",0,"M"],["F",5,"M"],["G",7,"M"],["C",0,"M"]];
+function caption(text){ const c=document.getElementById("caption"); c.hidden=!text; c.textContent=text||""; }
+document.getElementById("vlDemo").onclick=async()=>{
+  initAudio(); panic(); const run=++glideRun;
+  const chs=[0,1,2,3].map(i=>testChan(i));
+  const range = dev[112]!=null ? dev[112] : 12;
+  const avg={};
+  for(const on of [false,true]){
+    caption(on ? "Voice leading on" : "Voice leading off");
+    let prev=null, total=0, changes=0;
+    for(const [,root,q] of VL_PROG){
+      if(run!==glideRun) return caption(null);
+      const v=firmwareVoicing(root, VL_TONES[q], prev, on, range), notes=v.map(x=>48+x);
+      if(!prev){ chs.forEach(ch=>bendTo(ch,0)); notes.forEach((n,i)=>handleMidi([0x90|chs[i],n,100])); }
+      else {
+        // as the minichord sends a glide over MPE: the new note arrives bent to where the voice was, then slides home
+        const old=prev.map(x=>48+x);
+        notes.forEach((n,i)=>{ handleMidi([0x80|chs[i],old[i],0]); bendTo(chs[i],old[i]-n); handleMidi([0x90|chs[i],n,100]); });
+        total+=notes.reduce((s,n,i)=>s+Math.abs(n-old[i]),0); changes++;
+        const t0=performance.now();
+        while(true){ const f=Math.min(1,(performance.now()-t0)/260); notes.forEach((n,i)=>bendTo(chs[i],(old[i]-n)*(1-f)));
+          if(f>=1) break; await sleep(12); if(run!==glideRun) return caption(null); }
+      }
+      prev=v; await sleep(1500);
+    }
+    prev.forEach((x,i)=>handleMidi([0x80|chs[i],48+x,0]));
+    avg[on]=total/changes;
+    await sleep(900);
+  }
+  caption(null);
+  document.getElementById("vlResult").textContent = `Voice leading off: the voices moved ${avg[false].toFixed(1)} semitones per chord change. On: ${avg[true].toFixed(1)}. `+
+    `The same eight chords with ${Math.round(avg[false]/avg[true])} times less motion, using a range of ${range}.`;
+};
 document.getElementById("glide").onclick=async()=>{
   initAudio(); panic(); const run=++glideRun;
   const chs=TEST.map((_,i)=>testChan(i));

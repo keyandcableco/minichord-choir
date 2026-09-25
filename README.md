@@ -14,6 +14,7 @@ A browser page that plays each chord voice of the [minichord](https://github.com
 - **Voice motion readout:** how far each voice moved at the last chord change, with a running average, to compare voice leading on and off.
 - **MPE MIDI recorder:** saves what the minichord sends as a MIDI file with every per-voice bend intact, for an MPE-aware host.
 - **Test buttons** that play a chord and a voice-led glide without a minichord attached.
+- **A voice leading demo** that plays C Am Dm G7 C F G C twice, voiced exactly as the minichord voices them (the root-position voicing and the voice-leading search are ported from its firmware), first with voice leading off and then on, and reports how far the voices moved each time.
 - **Two looks:** Scriptorium, a chant-book page with rubric staff lines and square neumes, and Workbench, a plain one. Plus a cathedral reverb, since it's a choir.
 
 ## Requirements
