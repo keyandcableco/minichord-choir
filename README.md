@@ -36,4 +36,5 @@ then visit http://localhost:8000/.
 
 - The page listens to the minichord's chord port (Port 1) by default. The harp port declares its own MPE zone on the same channel numbers, so mixing both ports would put harp strings into the chord voices.
 - Any sysex write marks a controller as connected, which pauses the minichord's autosave of knob moves until it is unplugged, the same as with Sound Lab.
+- On Linux the page always uses a larger audio buffer, since Chrome there tends to drop out with the smallest one.
 - If audio stutters on an older computer, choose "Light" in the performance menu, and turn the reverb down.

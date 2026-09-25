@@ -459,7 +459,9 @@ function pitchFor(s){
 // ---------- audio ----------
 function initAudio(){
   if(ctx) return ctx.resume();
-  ctx = new (window.AudioContext||window.webkitAudioContext)({latencyHint: perf==="light" ? "playback" : "interactive"});
+  // Chrome on desktop Linux drops out with the smallest buffer, so Linux always gets the larger one
+  const linuxDesktop = /Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent);
+  ctx = new (window.AudioContext||window.webkitAudioContext)({latencyHint: (perf==="light" || linuxDesktop) ? "playback" : "interactive"});
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value=-14; comp.ratio.value=4;
   master = ctx.createGain(); master.gain.value=.6;
